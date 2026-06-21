@@ -220,8 +220,21 @@ router.get('/:admissionNumber/assigned-exams', asyncHandler(async (req, res) => 
         }
       }
       
+      let safeExam = examDoc;
+      if (examDoc && examDoc.answerMode !== 'tutor' && !obj.submitted) {
+        safeExam = {
+          ...examDoc,
+          questions: (examDoc.questions || []).map(question => ({
+            ...question,
+            choices: (question.choices || []).map(choice => ({ text: choice.text })),
+            maxSelections: (question.choices || []).filter(choice => choice.isCorrect).length
+          }))
+        };
+      }
+
       return {
         ...obj,
+        exam: safeExam,
         status: obj.startDate && obj.endDate
           ? (now < obj.startDate ? 'upcoming' : (now > obj.endDate ? 'closed' : 'active'))
           : obj.status,
@@ -272,6 +285,10 @@ router.post('/:admissionNumber/submit-exam', asyncHandler(async (req, res) => {
     const { admissionNumber } = req.params;
     const { examId, answers } = req.body;
 
+    if (!Array.isArray(answers)) {
+      return res.status(400).json({ success: false, message: 'Answers must be provided as an array' });
+    }
+
     const student = await Student.findOne({ admissionNumber });
     if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
 
@@ -310,6 +327,22 @@ router.post('/:admissionNumber/submit-exam', asyncHandler(async (req, res) => {
     // Check if exam is purely multiple-choice
     const questions = exam.questions || [];
     const isPureMCQ = questions.length > 0 && questions.every(q => q.type === 'multipleChoice');
+    const validQuestionIds = new Set(questions.map(q => String(q.questionId)));
+    const submittedByQuestionId = new Map();
+    const hasQuestionIds = answers.some(answer => answer && answer.questionId);
+
+    if (hasQuestionIds) {
+      for (const answer of answers) {
+        const questionId = answer?.questionId ? String(answer.questionId) : '';
+        if (!validQuestionIds.has(questionId)) {
+          return res.status(400).json({ success: false, message: 'An answer references an invalid question' });
+        }
+        if (submittedByQuestionId.has(questionId)) {
+          return res.status(400).json({ success: false, message: 'A question was answered more than once' });
+        }
+        submittedByQuestionId.set(questionId, answer);
+      }
+    }
 
     // Helper function to normalize strings for matching
     const normalize = (str) => (str || '').trim().toLowerCase();
@@ -319,18 +352,13 @@ router.post('/:admissionNumber/submit-exam', asyncHandler(async (req, res) => {
     let mcqScore = 0;
     let hasNonMCQ = false;
 
-    const answersStored = (answers || []).map((a, ansIdx) => {
-      let question = null;
-      if (a.questionId) {
-        question = questions.find(q => String(q.questionId) === String(a.questionId));
-      }
-      const idx = question ? questions.indexOf(question) : ansIdx;
-      if (!question) question = questions[idx];
-
+    const answersStored = questions.map((question, questionIdx) => {
+      const a = hasQuestionIds
+        ? (submittedByQuestionId.get(String(question.questionId)) || { response: null })
+        : (answers[questionIdx] || { response: null });
       let marksAwarded = 0;
 
-      if (question) {
-        if (question.type === 'multipleChoice') {
+      if (question.type === 'multipleChoice') {
           // Get correct choices
           const correctChoices = (question.choices || [])
             .filter(c => c.isCorrect)
@@ -360,14 +388,13 @@ router.post('/:admissionNumber/submit-exam', asyncHandler(async (req, res) => {
             }
           }
           mcqScore += marksAwarded;
-        } else {
-          // Non-MCQ question (essay, matching, etc.)
-          hasNonMCQ = true;
-        }
+      } else {
+        // Non-MCQ question (essay, matching, etc.)
+        hasNonMCQ = true;
       }
 
       return {
-        questionId: question ? question.questionId : (a.questionId || null),
+        questionId: question.questionId,
         response: a.response,
         marksAwarded
       };
