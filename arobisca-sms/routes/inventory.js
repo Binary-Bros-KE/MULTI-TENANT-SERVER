@@ -1,10 +1,10 @@
 const express = require("express");
 const asyncHandler = require("express-async-handler");
 const multer = require("multer");
-const cloudinary = require("cloudinary").v2;
 const Inventory = require("../models/inventory");
 const Student = require("../models/student")
 const updateOverdueFees = require("../middleware/updateOverdueFees");
+const { deleteFromCloudinary, uploadBufferToCloudinary } = require('../../utils/cloudinaryTenant');
 const router = express.Router();
 
 // Apply the middleware to all inventory routes
@@ -24,32 +24,16 @@ router.get('/', asyncHandler(async (req, res) => {
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Cloudinary Config
-cloudinary.config({
-  cloud_name: process.env.AROBISCA_SMS_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.AROBISCA_SMS_CLOUDINARY_API_KEY,
-  api_secret: process.env.AROBISCA_SMS_CLOUDINARY_API_SECRET,
-  secure: true,
-});
-
 // Upload to Cloudinary
 const uploadToCloudinary = (fileBuffer) => {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder: "inventory_items",
-        resource_type: "image",
-        quality: "auto:good",
-        fetch_format: "auto",
-        width: 500,
-        height: 500,
-        crop: "fill",
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('AROBISCA_SMS', fileBuffer, {
+    folder: "inventory_items",
+    resource_type: "image",
+    quality: "auto:good",
+    fetch_format: "auto",
+    width: 500,
+    height: 500,
+    crop: "fill",
   });
 };
 
@@ -87,7 +71,7 @@ router.put("/:id", upload.single("image"), asyncHandler(async (req, res) => {
 
     if (req.file) {
       // Delete old image if a new one is uploaded
-      if (item.imagePublicId) await cloudinary.uploader.destroy(item.imagePublicId);
+      if (item.imagePublicId) await deleteFromCloudinary('AROBISCA_SMS', item.imagePublicId);
 
       const uploadResult = await uploadToCloudinary(req.file.buffer);
       req.body.imageUrl = uploadResult.secure_url;
@@ -347,7 +331,7 @@ router.delete("/:id", asyncHandler(async (req, res) => {
     const item = await Inventory.findById(req.params.id);
     if (!item) return res.status(404).json({ success: false, message: "Item not found" });
 
-    if (item.imagePublicId) await cloudinary.uploader.destroy(item.imagePublicId);
+    if (item.imagePublicId) await deleteFromCloudinary('AROBISCA_SMS', item.imagePublicId);
     await Inventory.findByIdAndDelete(req.params.id);
 
     res.json({ success: true, message: "Item deleted successfully" });

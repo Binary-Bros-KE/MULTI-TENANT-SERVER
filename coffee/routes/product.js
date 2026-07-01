@@ -3,7 +3,7 @@ const router = express.Router();
 const Product = require('../model/product');
 const multer = require('multer');
 const asyncHandler = require('express-async-handler');
-const cloudinary = require('cloudinary').v2;
+const { deleteFromCloudinary: deleteCloudinaryAsset, uploadBufferToCloudinary } = require('../../utils/cloudinaryTenant');
 
 // Configure multer storage (temporary memory storage)
 const storage = multer.memoryStorage();
@@ -14,43 +14,21 @@ const uploadProduct = multer({
   }
 });
 
-// Cloudinary Config (same as categories)
-cloudinary.config({
-    cloud_name: process.env.COFFEE_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.COFFEE_CLOUDINARY_API_KEY || process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.COFFEE_CLOUDINARY_API_SECRET || process.env.CLOUDINARY_API_SECRET,
-  secure: true
-});
-
 // Upload to Cloudinary function
 const uploadToCloudinary = (fileBuffer, options = {}) => {
-  return new Promise((resolve, reject) => {
-    const uploadOptions = {
-      folder: "products",
-      resource_type: "image",
-      quality: "auto:good",
-      fetch_format: "auto",
-      ...options
-    };
-
-    cloudinary.uploader.upload_stream(
-      uploadOptions,
-      (error, result) => {
-        if (error) {
-          console.error("Cloudinary upload error:", error);
-          reject({ message: "Image upload failed", error });
-        } else {
-          resolve(result);
-        }
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('COFFEE', fileBuffer, {
+    folder: "products",
+    resource_type: "image",
+    quality: "auto:good",
+    fetch_format: "auto",
+    ...options
   });
 };
 
 // Delete from Cloudinary function
 const deleteFromCloudinary = async (publicId) => {
   try {
-    const result = await cloudinary.uploader.destroy(publicId);
+    const result = await deleteCloudinaryAsset('COFFEE', publicId);
     return result;
   } catch (error) {
     console.error("Cloudinary delete error:", error);

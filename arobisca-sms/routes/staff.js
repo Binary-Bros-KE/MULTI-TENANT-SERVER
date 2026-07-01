@@ -4,43 +4,23 @@ const router = express.Router();
 const { getArobiscaSmsDB } = require('../config/db');
 const Staff = require('../models/staff'); // Create this model
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
+const { uploadBufferToCloudinary } = require('../../utils/cloudinaryTenant');
 
 // Configure multer (temporary storage)
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Cloudinary Config
-cloudinary.config({
-  cloud_name: process.env.AROBISCA_SMS_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.AROBISCA_SMS_CLOUDINARY_API_KEY,
-  api_secret: process.env.AROBISCA_SMS_CLOUDINARY_API_SECRET,
-  secure: true
-});
-
 // Upload to Cloudinary function
 const uploadToCloudinary = (fileBuffer) => {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder: "staff_profile_pictures",
-        resource_type: "image",
-        quality: "auto:good",
-        fetch_format: "auto",
-        width: 400,
-        height: 400,
-        crop: "fill",
-        gravity: "face",
-      },
-      (error, result) => {
-        if (error) {
-          console.error("Cloudinary upload error:", error);
-          reject({ message: "Image upload failed", error });
-        } else {
-          resolve(result);
-        }
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('AROBISCA_SMS', fileBuffer, {
+    folder: "staff_profile_pictures",
+    resource_type: "image",
+    quality: "auto:good",
+    fetch_format: "auto",
+    width: 400,
+    height: 400,
+    crop: "fill",
+    gravity: "face",
   });
 };
 

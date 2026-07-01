@@ -6,20 +6,12 @@ const User = require('../models/User')
 const Course = require('../models/Course')
 const MpesaTransaction = require('../models/Mpesa')
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
 const Tutor = require('../models/Tutor');
 const Alumni = require('../models/Alumni');
+const { deleteFromCloudinary: deleteCloudinaryAsset, uploadBufferToCloudinary } = require('../utils/cloudinaryTenant');
 
 
 const JWT_SECRET = process.env.ZOEZI_JWT_SECRET || 'zoezi_secret'
-
-// Cloudinary config
-cloudinary.config({
-  cloud_name: process.env.ZOEZI_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.ZOEZI_CLOUDINARY_API_KEY,
-  api_secret: process.env.ZOEZI_CLOUDINARY_API_SECRET,
-  secure: true
-});
 
 // Multer in-memory storage
 const storage = multer.memoryStorage();
@@ -39,29 +31,21 @@ const upload = multer({
 
 // Cloudinary upload utility
 const uploadToCloudinary = (fileBuffer, folder = 'profile_pictures') => {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: 'image',
-        transformation: [
-          { width: 400, height: 400, crop: 'fill', gravity: 'face' },
-          { quality: 'auto:good' },
-          { format: 'auto' }
-        ]
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('ZOEZI', fileBuffer, {
+    folder,
+    resource_type: 'image',
+    transformation: [
+      { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+      { quality: 'auto:good' },
+      { format: 'auto' }
+    ]
   });
 };
 
 // DELETE from Cloudinary utility
 const deleteFromCloudinary = async (publicId) => {
   try {
-    await cloudinary.uploader.destroy(publicId);
+    await deleteCloudinaryAsset('ZOEZI', publicId);
   } catch (error) {
     console.error('Error deleting from Cloudinary:', error);
     // Don't throw error - we don't want to fail the request if Cloudinary deletion fails

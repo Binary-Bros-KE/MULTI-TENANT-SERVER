@@ -10,7 +10,7 @@ const Group = require('../models/group');
 const Exam = require('../models/exam');
 const multer = require('multer');
 const Alumni = require('../models/alumni');
-const cloudinary = require('cloudinary').v2;
+const { deleteFromCloudinary, uploadBufferToCloudinary } = require('../../utils/cloudinaryTenant');
 
 // Get all students
 router.get('/', asyncHandler(async (req, res) => {
@@ -475,37 +475,17 @@ router.post('/:admissionNumber/submit-exam', asyncHandler(async (req, res) => {
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Cloudinary Config
-cloudinary.config({
-  cloud_name: process.env.AROBISCA_SMS_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.AROBISCA_SMS_CLOUDINARY_API_KEY,
-  api_secret: process.env.AROBISCA_SMS_CLOUDINARY_API_SECRET,
-  secure: true
-});
-
 // Upload to Cloudinary function
 const uploadToCloudinary = (fileBuffer) => {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder: "profile_pictures",
-        resource_type: "image",
-        quality: "auto:good",
-        fetch_format: "auto",
-        width: 400,
-        height: 400,
-        crop: "fill",
-        gravity: "face",
-      },
-      (error, result) => {
-        if (error) {
-          console.error("Cloudinary upload error:", error);
-          reject({ message: "Image upload failed", error });
-        } else {
-          resolve(result);
-        }
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('AROBISCA_SMS', fileBuffer, {
+    folder: "profile_pictures",
+    resource_type: "image",
+    quality: "auto:good",
+    fetch_format: "auto",
+    width: 400,
+    height: 400,
+    crop: "fill",
+    gravity: "face",
   });
 };
 
@@ -604,6 +584,7 @@ router.post('/register', upload.single('profileImage'), asyncHandler(async (req,
         amount: parseInt(upfrontFee, 10) || 0,
         previousAmount: 0,
         changeType: "initial",
+        paymentMethod: "OTHER",
         timestamp: new Date(),
         note: "Initial registration fee"
       }],
@@ -698,7 +679,7 @@ router.put('/:admissionNumber/update', upload.single('profileImage'), asyncHandl
       try {
         // Delete existing profile image from Cloudinary if it exists
         if (student.profilePicPublicId) {
-          await cloudinary.uploader.destroy(student.profilePicPublicId);
+          await deleteFromCloudinary('AROBISCA_SMS', student.profilePicPublicId);
         }
 
         // Upload new image
@@ -806,12 +787,7 @@ router.put('/:id/fee', asyncHandler(async (req, res) => {
 
   try {
     const { id } = req.params;
-    const { upfrontFee } = req.body;
-
-    // Validate new fee
-    if (!upfrontFee || isNaN(upfrontFee) || upfrontFee < 0) {
-      return res.status(400).json({ success: false, message: "Invalid fee amount" });
-    }
+    const { upfrontFee, amount, changeType, paymentMethod, processedBy, note } = req.body;
 
     // Find student by ID
     const student = await Student.findById(id);
@@ -819,11 +795,76 @@ router.put('/:id/fee', asyncHandler(async (req, res) => {
       return res.status(404).json({ success: false, message: "Student not found" });
     }
 
-    // Update fee
-    student.upfrontFee = upfrontFee;
+    const previousAmount = Number(student.upfrontFee || 0);
+    const allowedPaymentMethods = ["M-PESA", "BANK", "CHEQUE", "OTHER"];
+    let updateAmount = 0;
+    let newAmount = previousAmount;
+    let updateType = changeType;
+
+    if (amount !== undefined) {
+      updateAmount = Number(amount);
+
+      if (!Number.isFinite(updateAmount) || updateAmount <= 0) {
+        return res.status(400).json({ success: false, message: "Invalid fee amount" });
+      }
+
+      if (!["increase", "decrease"].includes(updateType)) {
+        return res.status(400).json({ success: false, message: "Invalid fee update type" });
+      }
+
+      newAmount = updateType === "increase"
+        ? previousAmount + updateAmount
+        : previousAmount - updateAmount;
+
+      if (newAmount < 0) {
+        return res.status(400).json({ success: false, message: "Paid amount cannot be less than zero" });
+      }
+    } else {
+      if (upfrontFee === undefined || !Number.isFinite(Number(upfrontFee)) || Number(upfrontFee) < 0) {
+        return res.status(400).json({ success: false, message: "Invalid fee amount" });
+      }
+
+      newAmount = Number(upfrontFee);
+      updateAmount = Math.abs(newAmount - previousAmount);
+
+      if (previousAmount === 0 && newAmount > 0) {
+        updateType = "initial";
+      } else if (newAmount > previousAmount) {
+        updateType = "increase";
+      } else if (newAmount < previousAmount) {
+        updateType = "decrease";
+      } else {
+        updateType = "initial";
+      }
+    }
+
+    const normalizedPaymentMethod = allowedPaymentMethods.includes(paymentMethod) ? paymentMethod : "OTHER";
+
+    student.feeUpdates.push({
+      amount: updateAmount,
+      previousAmount,
+      changeType: updateType,
+      paymentMethod: normalizedPaymentMethod,
+      timestamp: new Date(),
+      processedBy: processedBy || "system",
+      note: note || `${updateType} fee update. Previous paid amount: ${previousAmount}. New paid amount: ${newAmount}.`
+    });
+
+    student.upfrontFee = newAmount;
     await student.save();
 
-    res.json({ success: true, message: "Fee updated successfully", data: student });
+    res.json({
+      success: true,
+      message: "Fee updated successfully",
+      data: student,
+      change: {
+        type: updateType,
+        amount: updateAmount,
+        previousAmount,
+        newAmount,
+        paymentMethod: normalizedPaymentMethod
+      }
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -856,7 +897,7 @@ router.post('/:id/cancel-admission', asyncHandler(async (req, res) => {
 
     // Step 3: Remove student's profile picture if uploaded
     if (student.profilePicPublicId) {
-      await cloudinary.uploader.destroy(student.profilePicPublicId);
+      await deleteFromCloudinary('AROBISCA_SMS', student.profilePicPublicId);
     }
 
     // Step 4: Delete the student
@@ -1093,7 +1134,7 @@ router.post('/:studentId/graduate', asyncHandler(async (req, res) => {
     // Delete profile image from Cloudinary if it exists
     if (student.profilePicPublicId) {
       try {
-        await cloudinary.uploader.destroy(student.profilePicPublicId);
+        await deleteFromCloudinary('AROBISCA_SMS', student.profilePicPublicId);
         console.log(`Cloudinary image deleted for student: ${student.admissionNumber}`);
       } catch (cloudinaryError) {
         console.error("Error deleting Cloudinary image:", cloudinaryError);
@@ -1198,7 +1239,7 @@ router.put('/change-student-profile', upload.single('profileImage'), asyncHandle
 
     // Delete previous profile picture if exists
     if (student.profilePicPublicId) {
-      await cloudinary.uploader.destroy(student.profilePicPublicId);
+      await deleteFromCloudinary('AROBISCA_SMS', student.profilePicPublicId);
     }
 
     // Upload new image to Cloudinary

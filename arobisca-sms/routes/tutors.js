@@ -5,9 +5,9 @@ const { getArobiscaSmsDB } = require('../config/db');
 const Tutor = require('../models/tutors'); // Create this model
 const multer = require('multer');
 const bcrypt = require('bcrypt');
-const cloudinary = require('cloudinary').v2;
 const resetOldSalaries = require("../middleware/resetOldSalaries");
 const resetUnassignedTutors = require("../middleware/resetUnassignedTutors");
+const { deleteFromCloudinary, uploadBufferToCloudinary } = require('../../utils/cloudinaryTenant');
 
 // Middlewere functions
 router.use(resetOldSalaries);
@@ -17,37 +17,17 @@ router.use(resetUnassignedTutors);
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Cloudinary Config
-cloudinary.config({
-  cloud_name: process.env.AROBISCA_SMS_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.AROBISCA_SMS_CLOUDINARY_API_KEY,
-  api_secret: process.env.AROBISCA_SMS_CLOUDINARY_API_SECRET,
-  secure: true
-});
-
 // Upload to Cloudinary function
 const uploadToCloudinary = (fileBuffer) => {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder: "tutor_profile_pictures",
-        resource_type: "image",
-        quality: "auto:good",
-        fetch_format: "auto",
-        width: 400,
-        height: 400,
-        crop: "fill",
-        gravity: "face",
-      },
-      (error, result) => {
-        if (error) {
-          console.error("Cloudinary upload error:", error);
-          reject({ message: "Image upload failed", error });
-        } else {
-          resolve(result);
-        }
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('AROBISCA_SMS', fileBuffer, {
+    folder: "tutor_profile_pictures",
+    resource_type: "image",
+    quality: "auto:good",
+    fetch_format: "auto",
+    width: 400,
+    height: 400,
+    crop: "fill",
+    gravity: "face",
   });
 };
 
@@ -186,7 +166,7 @@ router.put('/:id', upload.single('profilePicture'), asyncHandler(async (req, res
       try {
         // Delete existing profile image from Cloudinary if it exists
         if (tutor.profilePicPublicId) {
-          await cloudinary.uploader.destroy(tutor.profilePicPublicId);
+          await deleteFromCloudinary('AROBISCA_SMS', tutor.profilePicPublicId);
         }
         const uploadResult = await uploadToCloudinary(req.file.buffer);
         updatedData.profilePicture = uploadResult.secure_url;
@@ -323,7 +303,7 @@ router.put('/:id/update-profile-picture', upload.single('profilePicture'), async
 
     // Delete previous profile picture if exists
     if (tutor.profilePicPublicId) {
-      await cloudinary.uploader.destroy(tutor.profilePicPublicId);
+      await deleteFromCloudinary('AROBISCA_SMS', tutor.profilePicPublicId);
     }
 
     // Upload new image to Cloudinary
@@ -429,7 +409,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
     // Delete profile picture from Cloudinary if exists
     if (tutor.profilePicPublicId) {
-      await cloudinary.uploader.destroy(tutor.profilePicPublicId);
+      await deleteFromCloudinary('AROBISCA_SMS', tutor.profilePicPublicId);
     }
 
     // Delete the tutor

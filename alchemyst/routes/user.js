@@ -8,10 +8,10 @@ const Spa = require('../models/Spa');
 const { authenticateToken } = require('../middleware/authMiddleware');
 const multer = require('multer');
 const mongoose = require('mongoose');
-const cloudinary = require('cloudinary').v2;
 const verifyCronKey = require('../cron/cronAuth');
 const bcrypt = require('bcryptjs');
 const { getAlchemystDB } = require('../config/db');
+const { deleteFromCloudinary, uploadBufferToCloudinary } = require('../../utils/cloudinaryTenant');
 
 const router = express.Router();
 
@@ -26,36 +26,14 @@ const upload = multer({
   }
 });
 
-// Cloudinary Config
-cloudinary.config({
-  cloud_name: process.env.ALCHEMYST_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.ALCHEMYST_CLOUDINARY_API_KEY,
-  api_secret: process.env.ALCHEMYST_CLOUDINARY_API_SECRET,
-  secure: true
-});
-
 // Upload to Cloudinary function
 const uploadToCloudinary = (fileBuffer, options = {}) => {
-  return new Promise((resolve, reject) => {
-    const uploadOptions = {
-      folder: "alchemyst",
-      resource_type: "image",
-      quality: "auto:good",
-      fetch_format: "auto",
-      ...options
-    };
-
-    cloudinary.uploader.upload_stream(
-      uploadOptions,
-      (error, result) => {
-        if (error) {
-          console.error("Cloudinary upload error:", error);
-          reject({ message: "Image upload failed", error });
-        } else {
-          resolve(result);
-        }
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('ALCHEMYST', fileBuffer, {
+    folder: "alchemyst",
+    resource_type: "image",
+    quality: "auto:good",
+    fetch_format: "auto",
+    ...options
   });
 };
 
@@ -838,7 +816,7 @@ router.post('/upload-image', authenticateToken, upload.single('image'), asyncHan
       // First, delete old profile image if exists
       if (user.profileImage && user.profileImage.profilePicPublicId) {
         try {
-          await cloudinary.uploader.destroy(user.profileImage.profilePicPublicId);
+          await deleteFromCloudinary('ALCHEMYST', user.profileImage.profilePicPublicId);
         } catch (deleteError) {
           console.error('Error deleting old profile image:', deleteError);
           // Continue with upload even if deletion fails
@@ -923,7 +901,7 @@ router.delete('/delete-image', authenticateToken, asyncHandler(async (req, res) 
 
   try {
     // Delete from Cloudinary
-    const deleteResult = await cloudinary.uploader.destroy(publicId);
+    const deleteResult = await deleteFromCloudinary('ALCHEMYST', publicId);
 
     if (deleteResult.result !== 'ok') {
       return res.status(400).json({
@@ -2090,7 +2068,7 @@ router.put('/services/:serviceId', authenticateToken, upload.single('image'), as
         // Delete old image if exists
         if (service.image && service.image.publicId) {
           try {
-            await cloudinary.uploader.destroy(service.image.publicId);
+            await deleteFromCloudinary('ALCHEMYST', service.image.publicId);
           } catch (deleteError) {
             console.error('Error deleting old service image:', deleteError);
           }
@@ -2203,7 +2181,7 @@ router.delete('/services/:serviceId', authenticateToken, asyncHandler(async (req
     // Delete service image from Cloudinary if exists (for SPAs)
     if (userType === 'spa' && service.image && service.image.publicId) {
       try {
-        await cloudinary.uploader.destroy(service.image.publicId);
+        await deleteFromCloudinary('ALCHEMYST', service.image.publicId);
       } catch (deleteError) {
         console.error('Error deleting service image from Cloudinary:', deleteError);
         // Continue with service deletion even if image deletion fails

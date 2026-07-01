@@ -2,21 +2,13 @@ const express = require('express');
 const router = express.Router();
 const Alumni = require('../models/Alumni');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
 const bcrypt = require('bcrypt');
+const { deleteFromCloudinary, uploadBufferToCloudinary } = require('../utils/cloudinaryTenant');
 const { transporter, generatePasswordResetTemplate } = require('../config/emailConfig');
 
 // Multer in-memory storage
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
-
-// Cloudinary config
-cloudinary.config({
-  cloud_name: process.env.ZOEZI_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.ZOEZI_CLOUDINARY_API_KEY,
-  api_secret: process.env.ZOEZI_CLOUDINARY_API_SECRET,
-  secure: true
-});
 
 // Helper to generate 4-digit reset code
 const generateResetCode = () => {
@@ -25,18 +17,10 @@ const generateResetCode = () => {
 
 // Helper to upload buffer to Cloudinary
 const uploadToCloudinary = (fileBuffer, folder = 'students_profile_pictures') => {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: 'auto',
-        transformation: [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }]
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('ZOEZI', fileBuffer, {
+    folder,
+    resource_type: 'auto',
+    transformation: [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }]
   });
 };
 
@@ -144,7 +128,7 @@ router.put('/:alumniId/update', upload.single('file'), async (req, res) => {
       // Delete old profile picture if exists
       if (alumnus.profilePicPublicId) {
         try {
-          await cloudinary.uploader.destroy(alumnus.profilePicPublicId);
+          await deleteFromCloudinary('ZOEZI', alumnus.profilePicPublicId);
         } catch (deleteError) {
           console.error('Error deleting old profile image:', deleteError);
           // Continue with upload even if deletion fails
@@ -1010,7 +994,7 @@ router.delete('/:id', async (req, res) => {
     // If alumni had a profile picture, delete it from Cloudinary
     if (deletedAlumnus.profilePicPublicId) {
       try {
-        await cloudinary.uploader.destroy(deletedAlumnus.profilePicPublicId);
+        await deleteFromCloudinary('ZOEZI', deletedAlumnus.profilePicPublicId);
       } catch (cloudinaryError) {
         console.error('Error deleting profile image from Cloudinary:', cloudinaryError);
         // Continue with deletion even if Cloudinary delete fails

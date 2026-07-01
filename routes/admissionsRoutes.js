@@ -2,42 +2,26 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
 const bcrypt = require('bcrypt');
 const asyncHandler = require('express-async-handler');
 const Student = require('../models/Student');
+const { uploadBufferToCloudinary } = require('../utils/cloudinaryTenant');
 const { transporter, generateStudentWelcomeTemplate } = require('../config/emailConfig');
 
 // Multer memory storage
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Cloudinary config
-cloudinary.config({
-  cloud_name: process.env.ZOEZI_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.ZOEZI_CLOUDINARY_API_KEY,
-  api_secret: process.env.ZOEZI_CLOUDINARY_API_SECRET,
-  secure: true
-});
-
 const uploadToCloudinary = (fileBuffer, folder = 'students_profile_pictures') => {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: 'image',
-        quality: 'auto:good',
-        fetch_format: 'auto',
-        width: 400,
-        height: 400,
-        crop: 'fill',
-        gravity: 'face'
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('ZOEZI', fileBuffer, {
+    folder,
+    resource_type: 'image',
+    quality: 'auto:good',
+    fetch_format: 'auto',
+    width: 400,
+    height: 400,
+    crop: 'fill',
+    gravity: 'face'
   });
 };
 

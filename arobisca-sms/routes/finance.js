@@ -195,12 +195,7 @@ router.get("/report/year/:year", asyncHandler(async (req, res) => {
 router.put('/:id/fee', asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    const { upfrontFee, processedBy, note } = req.body;
-
-    // Validate new fee
-    if (!upfrontFee || isNaN(upfrontFee) || upfrontFee < 0) {
-      return res.status(400).json({ success: false, message: "Invalid fee amount" });
-    }
+    const { upfrontFee, amount, changeType, paymentMethod, processedBy, note } = req.body;
 
     // Find student by ID
     const student = await Student.findById(id);
@@ -208,29 +203,60 @@ router.put('/:id/fee', asyncHandler(async (req, res) => {
       return res.status(404).json({ success: false, message: "Student not found" });
     }
 
-    const previousAmount = student.upfrontFee;
-    const newAmount = parseInt(upfrontFee, 10);
+    const previousAmount = Number(student.upfrontFee || 0);
+    const allowedPaymentMethods = ["M-PESA", "BANK", "CHEQUE", "OTHER"];
+    let updateAmount = 0;
+    let newAmount = previousAmount;
+    let updateType = changeType;
 
-    // Determine change type
-    let changeType;
-    if (previousAmount === 0 && newAmount > 0) {
-      changeType = "initial";
-    } else if (newAmount > previousAmount) {
-      changeType = "increase";
-    } else if (newAmount < previousAmount) {
-      changeType = "decrease";
+    if (amount !== undefined) {
+      updateAmount = Number(amount);
+
+      if (!Number.isFinite(updateAmount) || updateAmount <= 0) {
+        return res.status(400).json({ success: false, message: "Invalid fee amount" });
+      }
+
+      if (!["increase", "decrease"].includes(updateType)) {
+        return res.status(400).json({ success: false, message: "Invalid fee update type" });
+      }
+
+      newAmount = updateType === "increase"
+        ? previousAmount + updateAmount
+        : previousAmount - updateAmount;
+
+      if (newAmount < 0) {
+        return res.status(400).json({ success: false, message: "Paid amount cannot be less than zero" });
+      }
     } else {
-      changeType = "initial"; // no change
+      if (upfrontFee === undefined || !Number.isFinite(Number(upfrontFee)) || Number(upfrontFee) < 0) {
+        return res.status(400).json({ success: false, message: "Invalid fee amount" });
+      }
+
+      newAmount = Number(upfrontFee);
+      updateAmount = Math.abs(newAmount - previousAmount);
+
+      if (previousAmount === 0 && newAmount > 0) {
+        updateType = "initial";
+      } else if (newAmount > previousAmount) {
+        updateType = "increase";
+      } else if (newAmount < previousAmount) {
+        updateType = "decrease";
+      } else {
+        updateType = "initial";
+      }
     }
+
+    const normalizedPaymentMethod = allowedPaymentMethods.includes(paymentMethod) ? paymentMethod : "OTHER";
 
     // Record fee update
     student.feeUpdates.push({
-      amount: newAmount,
-      previousAmount: previousAmount,
-      changeType: changeType,
+      amount: updateAmount,
+      previousAmount,
+      changeType: updateType,
+      paymentMethod: normalizedPaymentMethod,
       timestamp: new Date(),
       processedBy: processedBy || "system",
-      note: note || `Fee updated from ${previousAmount} to ${newAmount}`
+      note: note || `${updateType} fee update. Previous paid amount: ${previousAmount}. New paid amount: ${newAmount}.`
     });
 
     // Update current fee
@@ -242,8 +268,11 @@ router.put('/:id/fee', asyncHandler(async (req, res) => {
       message: "Fee updated successfully", 
       data: student,
       change: {
-        type: changeType,
-        difference: newAmount - previousAmount
+        type: updateType,
+        amount: updateAmount,
+        previousAmount,
+        newAmount,
+        paymentMethod: normalizedPaymentMethod
       }
     });
   } catch (error) {

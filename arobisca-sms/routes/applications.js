@@ -297,6 +297,7 @@ router.post('/:id/admit', asyncHandler(async (req, res) => {
             amount: upfrontFee || 0,
             previousAmount: 0,
             changeType: "initial",
+            paymentMethod: "OTHER",
             timestamp: new Date(),
             note: "Initial admission fee"
         }],

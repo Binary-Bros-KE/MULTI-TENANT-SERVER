@@ -4,34 +4,18 @@ const Student = require('../models/Student');
 const Alumni = require('../models/Alumni');
 const mongoose = require('mongoose');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
+const { deleteFromCloudinary, uploadBufferToCloudinary } = require('../utils/cloudinaryTenant');
 
 // Multer in-memory storage
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Cloudinary config
-cloudinary.config({
-  cloud_name: process.env.ZOEZI_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.ZOEZI_CLOUDINARY_API_KEY,
-  api_secret: process.env.ZOEZI_CLOUDINARY_API_SECRET,
-  secure: true
-});
-
 // Helper to upload buffer to Cloudinary
 const uploadToCloudinary = (fileBuffer, folder = 'students_profile_pictures') => {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: 'auto',
-        transformation: [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }]
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('ZOEZI', fileBuffer, {
+    folder,
+    resource_type: 'auto',
+    transformation: [{ width: 400, height: 400, crop: 'fill', gravity: 'face' }]
   });
 };
 
@@ -234,7 +218,7 @@ router.put('/:studentId/update', upload.single('file'), async (req, res) => {
       // Delete old profile picture if exists
       if (student.profilePicPublicId) {
         try {
-          await cloudinary.uploader.destroy(student.profilePicPublicId);
+          await deleteFromCloudinary('ZOEZI', student.profilePicPublicId);
         } catch (deleteError) {
           console.error('Error deleting old profile image:', deleteError);
           // Continue with upload even if deletion fails

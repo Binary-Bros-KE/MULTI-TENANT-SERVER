@@ -5,39 +5,23 @@ const bcrypt = require('bcrypt');
 const router = express.Router();
 const Admin = require('../models/admin');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
+const { deleteFromCloudinary, uploadBufferToCloudinary } = require('../../utils/cloudinaryTenant');
 
 // Configure multer storage
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// Cloudinary Config
-cloudinary.config({
-  cloud_name: process.env.AROBISCA_SMS_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.AROBISCA_SMS_CLOUDINARY_API_KEY,
-  api_secret: process.env.AROBISCA_SMS_CLOUDINARY_API_SECRET,
-  secure: true
-});
-
 // Upload to Cloudinary function
 const uploadToCloudinary = (fileBuffer) => {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder: "admin_profiles",
-        resource_type: "image",
-        quality: "auto:good",
-        fetch_format: "auto",
-        width: 400,
-        height: 400,
-        crop: "fill",
-        gravity: "face",
-      },
-      (error, result) => {
-        if (error) reject({ message: "Image upload failed", error });
-        else resolve(result);
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('AROBISCA_SMS', fileBuffer, {
+    folder: "admin_profiles",
+    resource_type: "image",
+    quality: "auto:good",
+    fetch_format: "auto",
+    width: 400,
+    height: 400,
+    crop: "fill",
+    gravity: "face",
   });
 };
 
@@ -188,7 +172,7 @@ router.delete('/:id', asyncHandler(async (req, res) => {
 
     // Delete profile image from Cloudinary if it exists
     if (admin.profilePicPublicId) {
-      await cloudinary.uploader.destroy(admin.profilePicPublicId);
+      await deleteFromCloudinary('AROBISCA_SMS', admin.profilePicPublicId);
     }
 
     await Admin.findByIdAndDelete(req.params.id);

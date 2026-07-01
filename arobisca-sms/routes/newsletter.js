@@ -5,14 +5,7 @@ const Student = require('../models/student');
 const Alumni = require('../models/alumni');
 const { sendNewsletterEmail } = require('../utils/emailService');
 const auth = require('../middleware/auth');
-const cloudinary = require('cloudinary').v2;
-
-cloudinary.config({
-  cloud_name: process.env.AROBISCA_SMS_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.AROBISCA_SMS_CLOUDINARY_API_KEY,
-  api_secret: process.env.AROBISCA_SMS_CLOUDINARY_API_SECRET,
-  secure: true
-});
+const { uploadToCloudinary } = require('../../utils/cloudinaryTenant');
 
 const formatRefNumber = (seq) => {
   const padded = String(seq).padStart(3, '0');
@@ -44,7 +37,7 @@ router.post('/signature', auth, async (req, res) => {
       return res.status(400).json({ error: 'Signature image is required' });
     }
 
-    const uploadResult = await cloudinary.uploader.upload(imageData, {
+    const uploadResult = await uploadToCloudinary('AROBISCA_SMS', imageData, {
       folder: 'admin_signatures',
       resource_type: 'image',
       quality: 'auto:good',

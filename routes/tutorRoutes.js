@@ -2,11 +2,11 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
 const asyncHandler = require('express-async-handler');
 const Tutor = require('../models/Tutor');
 const Course = require('../models/Course'); // Assuming you have a Course model
 const bcrypt = require('bcrypt');
+const { deleteFromCloudinary: deleteCloudinaryAsset, uploadBufferToCloudinary } = require('../utils/cloudinaryTenant');
 
 // Multer memory storage
 const storage = multer.memoryStorage();
@@ -26,30 +26,22 @@ const upload = multer({
 
 // Cloudinary upload utility
 const uploadToCloudinary = (fileBuffer, folder = 'tutors_profile_pictures') => {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: 'image',
-        quality: 'auto:good',
-        fetch_format: 'auto',
-        width: 400,
-        height: 400,
-        crop: 'fill',
-        gravity: 'face'
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('ZOEZI', fileBuffer, {
+    folder,
+    resource_type: 'image',
+    quality: 'auto:good',
+    fetch_format: 'auto',
+    width: 400,
+    height: 400,
+    crop: 'fill',
+    gravity: 'face'
   });
 };
 
 // DELETE from Cloudinary utility
 const deleteFromCloudinary = async (publicId) => {
   try {
-    await cloudinary.uploader.destroy(publicId);
+    await deleteCloudinaryAsset('ZOEZI', publicId);
   } catch (error) {
     console.error('Error deleting from Cloudinary:', error);
     // Don't throw error - we don't want to fail the request if Cloudinary deletion fails

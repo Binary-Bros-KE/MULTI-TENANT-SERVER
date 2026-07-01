@@ -2,8 +2,8 @@ const express = require('express');
 const Category = require('../model/category');
 const Product = require('../model/product');
 const asyncHandler = require('express-async-handler');
-const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
+const { deleteFromCloudinary: deleteCloudinaryAsset, uploadBufferToCloudinary } = require('../../utils/cloudinaryTenant');
 
 const router = express.Router();
 
@@ -16,43 +16,21 @@ const uploadCategory = multer({
   }
 });
 
-// Cloudinary Config (make sure these env variables are set)
-cloudinary.config({
-  cloud_name: process.env.COFFEE_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.COFFEE_CLOUDINARY_API_KEY || process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.COFFEE_CLOUDINARY_API_SECRET || process.env.CLOUDINARY_API_SECRET,
-  secure: true
-});
-
 // Upload to Cloudinary function (same as your other app)
 const uploadToCloudinary = (fileBuffer, options = {}) => {
-  return new Promise((resolve, reject) => {
-    const uploadOptions = {
-      folder: "categories",
-      resource_type: "image",
-      quality: "auto:good",
-      fetch_format: "auto",
-      ...options
-    };
-
-    cloudinary.uploader.upload_stream(
-      uploadOptions,
-      (error, result) => {
-        if (error) {
-          console.error("Cloudinary upload error:", error);
-          reject({ message: "Image upload failed", error });
-        } else {
-          resolve(result);
-        }
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('COFFEE', fileBuffer, {
+    folder: "categories",
+    resource_type: "image",
+    quality: "auto:good",
+    fetch_format: "auto",
+    ...options
   });
 };
 
 // Delete from Cloudinary function
 const deleteFromCloudinary = async (publicId) => {
   try {
-    const result = await cloudinary.uploader.destroy(publicId);
+    const result = await deleteCloudinaryAsset('COFFEE', publicId);
     return result;
   } catch (error) {
     console.error("Cloudinary delete error:", error);

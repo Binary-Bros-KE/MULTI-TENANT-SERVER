@@ -2,10 +2,10 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
 const asyncHandler = require('express-async-handler');
 const Course = require('../models/Course');
 const Tutor = require('../models/Tutor');
+const { deleteFromCloudinary: deleteCloudinaryAsset, uploadBufferToCloudinary } = require('../utils/cloudinaryTenant');
 
 // Multer configuration
 const storage = multer.memoryStorage();
@@ -26,29 +26,21 @@ const upload = multer({
 
 // Cloudinary configuration
 const uploadToCloudinary = (fileBuffer, folder = 'courses_images') => {
-  return new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      {
-        folder,
-        resource_type: 'image',
-        quality: 'auto:good',
-        fetch_format: 'auto',
-        width: 800,
-        height: 450,
-        crop: 'fill'
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    ).end(fileBuffer);
+  return uploadBufferToCloudinary('ZOEZI', fileBuffer, {
+    folder,
+    resource_type: 'image',
+    quality: 'auto:good',
+    fetch_format: 'auto',
+    width: 800,
+    height: 450,
+    crop: 'fill'
   });
 };
 
 // Delete from Cloudinary
 const deleteFromCloudinary = async (publicId) => {
   try {
-    await cloudinary.uploader.destroy(publicId);
+    await deleteCloudinaryAsset('ZOEZI', publicId);
   } catch (error) {
     console.error('Error deleting from Cloudinary:', error);
   }

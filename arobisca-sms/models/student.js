@@ -37,6 +37,7 @@ const feeUpdateSchema = new mongoose.Schema({
   amount: { type: Number, required: true },
   previousAmount: { type: Number, required: true },
   changeType: { type: String, enum: ["initial", "increase", "decrease"], required: true },
+  paymentMethod: { type: String, enum: ["M-PESA", "BANK", "CHEQUE", "OTHER"], default: "OTHER" },
   timestamp: { type: Date, default: Date.now },
   processedBy: { type: String },
   note: { type: String }
