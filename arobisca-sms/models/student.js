@@ -38,6 +38,9 @@ const feeUpdateSchema = new mongoose.Schema({
   previousAmount: { type: Number, required: true },
   changeType: { type: String, enum: ["initial", "increase", "decrease"], required: true },
   paymentMethod: { type: String, enum: ["M-PESA", "BANK", "CHEQUE", "OTHER"], default: "OTHER" },
+  // The unique code M-PESA/bank/cheque transactions generate — not
+  // applicable to CASH/OTHER, so it's optional at the schema level.
+  transactionCode: { type: String },
   timestamp: { type: Date, default: Date.now },
   processedBy: { type: String },
   note: { type: String }

@@ -10,7 +10,16 @@ const Group = require('../models/group');
 const Exam = require('../models/exam');
 const multer = require('multer');
 const Alumni = require('../models/alumni');
+const Receipt = require('../models/receipt');
 const { deleteFromCloudinary, uploadBufferToCloudinary } = require('../../utils/cloudinaryTenant');
+const { sendAdmissionLetterShareEmail } = require('../utils/emailService');
+
+// Document numbers only need to be unique and traceable to when they were
+// issued — a full sequence counter isn't worth the extra DB round trip here.
+const generateReceiptNumber = () =>
+  `RCPT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now().toString().slice(-6)}`;
+const generateCreditNoteNumber = () =>
+  `CN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now().toString().slice(-6)}`;
 
 // Get all students
 router.get('/', asyncHandler(async (req, res) => {
@@ -514,7 +523,11 @@ router.post('/register', upload.single('profileImage'), asyncHandler(async (req,
       firstName, lastName, gender, dateOfBirth, religion, nationality,
       email, phoneNumber, nationalId, emergencyFirstName, emergencyLastName,
       emergencyRelation, emergencyPhone, startDate,
+      paymentMethod, transactionCode,
     } = req.body;
+
+    const allowedPaymentMethods = ["M-PESA", "BANK", "CHEQUE", "OTHER"];
+    const normalizedPaymentMethod = allowedPaymentMethods.includes(paymentMethod) ? paymentMethod : "OTHER";
 
     const courseDoc = await Course.findById(course).session(session);
     if (!courseDoc) {
@@ -584,7 +597,8 @@ router.post('/register', upload.single('profileImage'), asyncHandler(async (req,
         amount: parseInt(upfrontFee, 10) || 0,
         previousAmount: 0,
         changeType: "initial",
-        paymentMethod: "OTHER",
+        paymentMethod: normalizedPaymentMethod,
+        transactionCode: transactionCode || undefined,
         timestamp: new Date(),
         note: "Initial registration fee"
       }],
@@ -626,10 +640,39 @@ router.post('/register', upload.single('profileImage'), asyncHandler(async (req,
     await session.commitTransaction();
     session.endSession();
 
+    // The initial upfront fee is a payment, so it gets a receipt too — same
+    // as any other fee update. Best-effort: a receipt hiccup shouldn't fail
+    // a registration that already succeeded.
+    let receipt = null;
+    const student = newStudent[0];
+    if (student.upfrontFee > 0) {
+      try {
+        receipt = await Receipt.create({
+          receiptNumber: generateReceiptNumber(),
+          documentType: "RECEIPT",
+          sourceFeeUpdateId: student.feeUpdates[0]?._id,
+          date: new Date(),
+          name: `${student.firstName} ${student.lastName}`,
+          admnNumber: student.admissionNumber,
+          courseEnrolled: student.courseName,
+          nationalIdNumber: student.nationalId,
+          totalAmountDue: student.upfrontFee,
+          totalAmountRemaining: Math.max(0, student.courseFee - student.upfrontFee),
+          paymentMethod: normalizedPaymentMethod,
+          transactionCode: transactionCode || undefined,
+          processedBy: "system",
+          note: "Initial admission fee"
+        });
+      } catch (receiptError) {
+        console.error(`Failed to create receipt for new registration (admissionNumber=${student.admissionNumber}):`, receiptError.message, receiptError.errors || '');
+      }
+    }
+
     res.status(201).json({
       message: 'Student registered successfully',
-      student: newStudent[0],
-      course: courseDoc
+      student,
+      course: courseDoc,
+      receipt
     });
   } catch (error) {
     await session.abortTransaction();
@@ -637,6 +680,42 @@ router.post('/register', upload.single('profileImage'), asyncHandler(async (req,
     console.error(error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
+}));
+
+// Public minimal lookup for the admission letter share page — deliberately
+// narrow (no password, national ID, emergency contact) since this is
+// reachable without authentication.
+router.get('/admission-letter/:admissionNumber', asyncHandler(async (req, res) => {
+  const admissionNumber = decodeURIComponent(req.params.admissionNumber);
+  const student = await Student.findOne({ admissionNumber }).select(
+    'firstName lastName admissionNumber courseName courseDuration courseFee upfrontFee startDate admissionDate email phoneNumber'
+  );
+  if (!student) {
+    return res.status(404).json({ success: false, message: 'Student not found' });
+  }
+  res.json({ success: true, data: student });
+}));
+
+// Email an admission letter share link to a recipient
+router.post('/admission-letter/:admissionNumber/share/email', asyncHandler(async (req, res) => {
+  const { to, shareUrl } = req.body;
+
+  if (!to || !shareUrl) {
+    return res.status(400).json({ success: false, message: 'Recipient email and shareUrl are required' });
+  }
+
+  const admissionNumber = decodeURIComponent(req.params.admissionNumber);
+  const student = await Student.findOne({ admissionNumber });
+  if (!student) {
+    return res.status(404).json({ success: false, message: 'Student not found' });
+  }
+
+  const result = await sendAdmissionLetterShareEmail(student, to, shareUrl);
+  if (!result.success) {
+    return res.status(500).json({ success: false, message: result.error || 'Failed to send email' });
+  }
+
+  res.json({ success: true, message: 'Admission letter emailed successfully' });
 }));
 
 // Get student by admission number
@@ -787,7 +866,7 @@ router.put('/:id/fee', asyncHandler(async (req, res) => {
 
   try {
     const { id } = req.params;
-    const { upfrontFee, amount, changeType, paymentMethod, processedBy, note } = req.body;
+    const { upfrontFee, amount, changeType, paymentMethod, transactionCode, processedBy, note } = req.body;
 
     // Find student by ID
     const student = await Student.findById(id);
@@ -839,19 +918,65 @@ router.put('/:id/fee', asyncHandler(async (req, res) => {
     }
 
     const normalizedPaymentMethod = allowedPaymentMethods.includes(paymentMethod) ? paymentMethod : "OTHER";
+    const noteText = note || `${updateType} fee update. Previous paid amount: ${previousAmount}. New paid amount: ${newAmount}.`;
 
     student.feeUpdates.push({
       amount: updateAmount,
       previousAmount,
       changeType: updateType,
       paymentMethod: normalizedPaymentMethod,
+      transactionCode: transactionCode || undefined,
       timestamp: new Date(),
       processedBy: processedBy || "system",
-      note: note || `${updateType} fee update. Previous paid amount: ${previousAmount}. New paid amount: ${newAmount}.`
+      note: noteText
     });
+    const feeUpdateEntry = student.feeUpdates[student.feeUpdates.length - 1];
 
     student.upfrontFee = newAmount;
     await student.save();
+
+    // Every payment is a receipt, generated automatically here so the admin
+    // never has to re-enter the same details in the Receipts tab. Decreases
+    // are corrections/refunds, not payments, so they get an equivalent
+    // Credit Note instead — same collection, opposite direction — so the
+    // sum of receipts minus credit notes always exactly matches upfrontFee.
+    let receipt = null;
+    let creditNote = null;
+    if (updateAmount > 0 && updateType !== "decrease") {
+      receipt = await Receipt.create({
+        receiptNumber: generateReceiptNumber(),
+        documentType: "RECEIPT",
+        sourceFeeUpdateId: feeUpdateEntry._id,
+        date: new Date(),
+        name: `${student.firstName} ${student.lastName}`,
+        admnNumber: student.admissionNumber,
+        courseEnrolled: student.courseName,
+        nationalIdNumber: student.nationalId,
+        totalAmountDue: updateAmount,
+        totalAmountRemaining: Math.max(0, student.courseFee - newAmount),
+        paymentMethod: normalizedPaymentMethod,
+        transactionCode: transactionCode || undefined,
+        processedBy: processedBy || "system",
+        note: noteText
+      });
+    } else if (updateAmount > 0 && updateType === "decrease") {
+      creditNote = await Receipt.create({
+        receiptNumber: generateCreditNoteNumber(),
+        documentType: "CREDIT_NOTE",
+        sourceFeeUpdateId: feeUpdateEntry._id,
+        date: new Date(),
+        name: `${student.firstName} ${student.lastName}`,
+        admnNumber: student.admissionNumber,
+        courseEnrolled: student.courseName,
+        nationalIdNumber: student.nationalId,
+        totalAmountDue: updateAmount,
+        totalAmountRemaining: Math.max(0, student.courseFee - newAmount),
+        paymentMethod: normalizedPaymentMethod,
+        transactionCode: transactionCode || undefined,
+        processedBy: processedBy || "system",
+        note: noteText
+      });
+    }
 
     res.json({
       success: true,
@@ -863,7 +988,9 @@ router.put('/:id/fee', asyncHandler(async (req, res) => {
         previousAmount,
         newAmount,
         paymentMethod: normalizedPaymentMethod
-      }
+      },
+      receipt,
+      creditNote
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

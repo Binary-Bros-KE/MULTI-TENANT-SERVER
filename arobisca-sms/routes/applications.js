@@ -4,8 +4,12 @@ const asyncHandler = require('express-async-handler');
 const Application = require('../models/application');
 const Student = require('../models/student');
 const Course = require('../models/courses');
+const Receipt = require('../models/receipt');
 const bcrypt = require('bcrypt');
 const { sendApplicationEmails, sendRejectionEmail, sendAdmissionConfirmationEmail } = require('../utils/emailService');
+
+const generateReceiptNumber = () =>
+    `RCPT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Date.now().toString().slice(-6)}`;
 
 // Submit a new application
 router.post('/', asyncHandler(async (req, res) => {
@@ -200,7 +204,7 @@ router.put('/:id/reject', asyncHandler(async (req, res) => {
 router.post('/:id/admit', asyncHandler(async (req, res) => {
     console.log('Admit application called with data:', req.body);
     const { id } = req.params;
-    const { 
+    const {
         academicYear,
         admissionNumber,
         admissionDate,
@@ -210,8 +214,13 @@ router.post('/:id/admit', asyncHandler(async (req, res) => {
         courseFee,
         courseName,
         courseId,
-        admittedBy 
+        admittedBy,
+        paymentMethod,
+        transactionCode,
     } = req.body;
+
+    const allowedPaymentMethods = ["M-PESA", "BANK", "CHEQUE", "OTHER"];
+    const normalizedPaymentMethod = allowedPaymentMethods.includes(paymentMethod) ? paymentMethod : "OTHER";
 
     const application = await Application.findById(id);
     if (!application) {
@@ -297,7 +306,8 @@ router.post('/:id/admit', asyncHandler(async (req, res) => {
             amount: upfrontFee || 0,
             previousAmount: 0,
             changeType: "initial",
-            paymentMethod: "OTHER",
+            paymentMethod: normalizedPaymentMethod,
+            transactionCode: transactionCode || undefined,
             timestamp: new Date(),
             note: "Initial admission fee"
         }],
@@ -342,6 +352,33 @@ router.post('/:id/admit', asyncHandler(async (req, res) => {
         // Don't fail the request if email fails
     }
 
+    // The initial upfront fee is a payment, so it gets a receipt too — same
+    // as any other fee update. Best-effort: a receipt hiccup shouldn't fail
+    // an admission that already succeeded.
+    let receipt = null;
+    if (student.upfrontFee > 0) {
+        try {
+            receipt = await Receipt.create({
+                receiptNumber: generateReceiptNumber(),
+                documentType: "RECEIPT",
+                sourceFeeUpdateId: student.feeUpdates[0]?._id,
+                date: new Date(),
+                name: `${student.firstName} ${student.lastName}`,
+                admnNumber: student.admissionNumber,
+                courseEnrolled: student.courseName,
+                nationalIdNumber: student.nationalId,
+                totalAmountDue: student.upfrontFee,
+                totalAmountRemaining: Math.max(0, student.courseFee - student.upfrontFee),
+                paymentMethod: normalizedPaymentMethod,
+                transactionCode: transactionCode || undefined,
+                processedBy: "system",
+                note: "Initial admission fee"
+            });
+        } catch (receiptError) {
+            console.error(`Failed to create receipt for admitted application (admissionNumber=${student.admissionNumber}):`, receiptError.message, receiptError.errors || '');
+        }
+    }
+
     // Delete the application
     await Application.findByIdAndDelete(id);
 
@@ -354,12 +391,20 @@ router.post('/:id/admit', asyncHandler(async (req, res) => {
                 admissionNumber: student.admissionNumber,
                 firstName: student.firstName,
                 lastName: student.lastName,
-                email: student.email
+                email: student.email,
+                phoneNumber: student.phoneNumber,
+                courseName: student.courseName,
+                courseDuration: student.courseDuration,
+                courseFee: student.courseFee,
+                upfrontFee: student.upfrontFee,
+                startDate: student.startDate,
+                admissionDate: student.admissionDate
             },
             application: {
                 _id: application._id,
                 applicationNumber: application.applicationNumber
-            }
+            },
+            receipt
         }
     });
 }));

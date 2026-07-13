@@ -66,6 +66,112 @@ Migrates passwords for students who were enrolled without passwords.
 node PROD-UTILS/migrateStudentPasswords.js
 ```
 
+### 3. receiptMigration.js
+One-time copy of every receipt embedded inside `FinancialRecords.receipts`
+into the new standalone `Receipt` collection (see `models/receipt.js` and
+`routes/receipt.js`, mounted at `/receipts`). The new Receipts tab in the
+frontend reads/writes only the new collection.
+
+**What it does:**
+1. Scans every `FinancialRecords` document for its embedded `receipts` array
+2. Copies each receipt into the `Receipt` collection, preserving its
+   original `_id` and `receiptNumber`
+3. Skips any receipt whose `receiptNumber` already exists in the new
+   collection, so it's safe to re-run
+
+**How to run (from the `4-MULTI-TENANT-NODE-PULLED` folder):**
+```bash
+node arobisca-sms/PROD-UTILS/receiptMigration.js
+```
+
+**Important notes:**
+- ✅ Non-destructive — only copies; the old embedded receipts are left in
+  place inside `FinancialRecords`
+- ✅ Safe to run multiple times — already-migrated receipts are skipped
+- ⚠️ One-time use — delete this file once you've confirmed the Receipts
+  tab shows the migrated data correctly
+
+### 4. backfillMissingAdmissionReceipts.js
+Creates a receipt for any student who was admitted with an initial upfront
+fee but has no matching "Initial admission fee" receipt — e.g. students
+admitted via the Admission tab or Applications tab before automatic receipt
+generation was added to `POST /students/register` and
+`POST /applications/:id/admit`.
+
+**How to run (from the `4-MULTI-TENANT-NODE-PULLED` folder):**
+```bash
+node arobisca-sms/PROD-UTILS/backfillMissingAdmissionReceipts.js
+```
+
+**Important notes:**
+- ✅ Safe to run multiple times — students who already have a matching
+  receipt are skipped
+- ⚠️ One-time use — delete this file once the Receipts tab shows a receipt
+  for every admitted student who paid an initial fee
+
+### 5. billMigration.js
+One-time copy of every bill embedded inside `FinancialRecords.bills` into
+the new standalone `Bill` collection (see `models/bill.js` and
+`routes/bill.js`, mounted at `/bills`). The new Bills tab in the frontend
+reads/writes only the new collection.
+
+**How to run (from the `4-MULTI-TENANT-NODE-PULLED` folder):**
+```bash
+node arobisca-sms/PROD-UTILS/billMigration.js
+```
+
+**Important notes:**
+- ✅ Non-destructive — only copies; the old embedded bills are left in
+  place inside `FinancialRecords`
+- ✅ Safe to run multiple times — already-migrated bills are skipped
+- ⚠️ One-time use — delete this file once you've confirmed the Bills tab
+  shows the migrated data correctly
+
+### 6. invoiceMigration.js
+One-time copy of every invoice embedded inside `FinancialRecords.invoices`
+into the new standalone `Invoice` collection (see `models/invoice.js` and
+`routes/invoice.js`, mounted at `/invoices`). The new Invoices tab in the
+frontend reads/writes only the new collection.
+
+**How to run (from the `4-MULTI-TENANT-NODE-PULLED` folder):**
+```bash
+node arobisca-sms/PROD-UTILS/invoiceMigration.js
+```
+
+**Important notes:**
+- ✅ Non-destructive — only copies; the old embedded invoices are left in
+  place inside `FinancialRecords`
+- ✅ Safe to run multiple times — already-migrated invoices are skipped
+- ⚠️ One-time use — delete this file once you've confirmed the Invoices tab
+  shows the migrated data correctly
+
+### 7. backfillCreditNotesForDecrements.js
+Every fee decrement recorded before the Credit Note patch only updated
+`student.feeUpdates` — no matching document existed in the `Receipt`
+collection, so the original receipt for the payment being corrected stayed
+overstated forever. This is what caused "Collected This Period" in the
+Reports tab to come out higher than the live student totals.
+
+This script walks every student's `feeUpdates`, finds every `decrease`
+entry, and creates the `CREDIT_NOTE` (in the same `Receipt` collection,
+`documentType: 'CREDIT_NOTE'`) that would have been created automatically
+had the patch existed at the time — dated to the original decrement, not
+today, so it lands in the correct historical month/year for reports.
+
+**How to run (from the `4-MULTI-TENANT-NODE-PULLED` folder):**
+```bash
+node arobisca-sms/PROD-UTILS/backfillCreditNotesForDecrements.js
+```
+
+**Important notes:**
+- ✅ Non-destructive — only creates new `CREDIT_NOTE` documents; never
+  touches `feeUpdates`, `upfrontFee`, or any existing receipt
+- ✅ Safe to run multiple times — each credit note is linked back to the
+  `feeUpdates` entry that caused it via `sourceFeeUpdateId`, and any entry
+  that already has one is skipped
+- ⚠️ One-time use — delete this file once the Reports tab's "Collected This
+  Period" figures reconcile correctly
+
 ---
 
 ## Development Notes

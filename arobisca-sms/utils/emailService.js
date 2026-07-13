@@ -1977,6 +1977,138 @@ const sendNewsletterEmail = async (recipientEmail, subject, body, templateData =
     }
 };
 
+// Receipt share email template — links back to the public receipt page
+// instead of embedding the PDF, so the recipient always sees live data.
+const generateReceiptShareTemplate = (receipt, shareUrl) => {
+    const formattedDate = receipt.date ? new Date(receipt.date).toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric'
+    }) : '';
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Receipt - Arobisca Training Center</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f9f5f0; color: #288733; line-height: 1.6; margin: 0; padding: 0; }
+        .container { max-width: 500px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(44,24,16,0.1); }
+        .header { background: linear-gradient(135deg, #288733 0%, #6cb26f 100%); padding: 30px; text-align: center; }
+        .header h1 { color: white; font-size: 22px; margin: 0; }
+        .content { padding: 30px; }
+        .receipt-number { background: #f9f5f0; color: #4f3320; font-weight: 700; text-align: center; padding: 15px; border-radius: 8px; margin: 20px 0; border: 2px solid #4f3320; }
+        .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e0d4c4; }
+        .info-row span:first-child { color: #288733; font-weight: 600; }
+        .info-row span:last-child { color: #5d4037; }
+        .btn { display: block; text-align: center; background: #288733; color: #ffffff !important; padding: 14px; border-radius: 8px; text-decoration: none; font-weight: 700; margin: 30px 0; }
+        .footer { text-align: center; padding: 20px; background: #288733; color: rgba(255,255,255,0.85); font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header"><h1>AROBISCA TRAINING CENTER</h1></div>
+        <div class="content">
+            <p>Dear ${receipt.name},</p>
+            <p>Here is your payment receipt.</p>
+            <div class="receipt-number">Receipt No: ${receipt.receiptNumber}</div>
+            <div class="info-row"><span>Date</span><span>${formattedDate}</span></div>
+            <div class="info-row"><span>Course</span><span>${receipt.courseEnrolled || 'N/A'}</span></div>
+            <div class="info-row"><span>Amount Paid</span><span>KES ${Number(receipt.totalAmountDue || 0).toLocaleString()}</span></div>
+            <div class="info-row"><span>Balance</span><span>KES ${Number(receipt.totalAmountRemaining || 0).toLocaleString()}</span></div>
+            <a href="${shareUrl}" class="btn">View &amp; Download Receipt</a>
+            <p style="font-size: 13px; color: #5d4037;">If the button doesn't work, copy this link into your browser:<br>${shareUrl}</p>
+        </div>
+        <div class="footer">
+            &copy; ${new Date().getFullYear()} Arobisca Training Center &middot; Eco Bank Towers, 5th Floor, Muindi Mbingu Street, Nairobi
+        </div>
+    </div>
+</body>
+</html>`;
+};
+
+// Send a receipt share link by email
+const sendReceiptShareEmail = async (receipt, recipientEmail, shareUrl) => {
+    try {
+        const html = generateReceiptShareTemplate(receipt, shareUrl);
+        const info = await transporter.sendMail({
+            from: arobiscaEmailUser,
+            to: recipientEmail,
+            subject: `Your Receipt ${receipt.receiptNumber} - Arobisca Training Center`,
+            html,
+            replyTo: 'info@arobiscatrainingcenter.co.ke'
+        });
+        return { success: true, messageId: info.messageId };
+    } catch (error) {
+        console.error('Error sending receipt share email:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+// Admission letter share email template — links back to the public
+// admission letter page instead of embedding the PDF, so it always shows
+// live data even if the student's record changes later.
+const generateAdmissionLetterShareTemplate = (student, shareUrl) => {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Admission Letter - Arobisca Training Center</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f9f5f0; color: #288733; line-height: 1.6; margin: 0; padding: 0; }
+        .container { max-width: 500px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(44,24,16,0.1); }
+        .header { background: linear-gradient(135deg, #288733 0%, #6cb26f 100%); padding: 30px; text-align: center; }
+        .header h1 { color: white; font-size: 22px; margin: 0; }
+        .content { padding: 30px; }
+        .admn-number { background: #f9f5f0; color: #4f3320; font-weight: 700; text-align: center; padding: 15px; border-radius: 8px; margin: 20px 0; border: 2px solid #4f3320; }
+        .info-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e0d4c4; }
+        .info-row span:first-child { color: #288733; font-weight: 600; }
+        .info-row span:last-child { color: #5d4037; }
+        .btn { display: block; text-align: center; background: #288733; color: #ffffff !important; padding: 14px; border-radius: 8px; text-decoration: none; font-weight: 700; margin: 30px 0; }
+        .footer { text-align: center; padding: 20px; background: #288733; color: rgba(255,255,255,0.85); font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header"><h1>AROBISCA TRAINING CENTER</h1></div>
+        <div class="content">
+            <p>Dear ${student.firstName},</p>
+            <p>Congratulations! Here is your admission letter.</p>
+            <div class="admn-number">Admission No: ${student.admissionNumber}</div>
+            <div class="info-row"><span>Course</span><span>${student.courseName || 'N/A'}</span></div>
+            <div class="info-row"><span>Duration</span><span>${student.courseDuration || 'N/A'}</span></div>
+            <div class="info-row"><span>Course Fee</span><span>KES ${Number(student.courseFee || 0).toLocaleString()}</span></div>
+            <a href="${shareUrl}" class="btn">View &amp; Download Admission Letter</a>
+            <p style="font-size: 13px; color: #5d4037;">If the button doesn't work, copy this link into your browser:<br>${shareUrl}</p>
+        </div>
+        <div class="footer">
+            &copy; ${new Date().getFullYear()} Arobisca Training Center &middot; Eco Bank Towers, 5th Floor, Muindi Mbingu Street, Nairobi
+        </div>
+    </div>
+</body>
+</html>`;
+};
+
+// Send an admission letter share link by email
+const sendAdmissionLetterShareEmail = async (student, recipientEmail, shareUrl) => {
+    try {
+        const html = generateAdmissionLetterShareTemplate(student, shareUrl);
+        const info = await transporter.sendMail({
+            from: arobiscaEmailUser,
+            to: recipientEmail,
+            subject: `Your Admission Letter - ${student.admissionNumber} - Arobisca Training Center`,
+            html,
+            replyTo: 'admissions@arobiscatrainingcenter.co.ke'
+        });
+        return { success: true, messageId: info.messageId };
+    } catch (error) {
+        console.error('Error sending admission letter share email:', error);
+        return { success: false, error: error.message };
+    }
+};
+
 module.exports = {
     transporter,
     generateApplicationConfirmationTemplate,
@@ -1988,5 +2120,9 @@ module.exports = {
     sendAdmissionConfirmationEmail,
     sendNewsletterEmail,
     generateStudentLetterTemplate,
-    calculateEndDate
+    calculateEndDate,
+    generateReceiptShareTemplate,
+    sendReceiptShareEmail,
+    generateAdmissionLetterShareTemplate,
+    sendAdmissionLetterShareEmail
 };
