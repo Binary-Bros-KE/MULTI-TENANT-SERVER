@@ -34,6 +34,8 @@ mountRoute('/bills', './routes/bill');
 mountRoute('/invoices', './routes/invoice');
 mountRoute('/reports', './routes/reports');
 mountRoute('/admin', './routes/admin');
+mountRoute('/admin-permissions', './routes/adminPermissions');
+mountRoute('/curriculum', './routes/curriculum');
 mountRoute('/alumni', './routes/alumni');
 mountRoute('/feedback', './routes/feedback');
 mountRoute('/quizzes', './routes/quiz');

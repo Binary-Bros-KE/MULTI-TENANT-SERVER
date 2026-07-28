@@ -172,6 +172,31 @@ node arobisca-sms/PROD-UTILS/backfillCreditNotesForDecrements.js
 - ⚠️ One-time use — delete this file once the Reports tab's "Collected This
   Period" figures reconcile correctly
 
+### 8. seedCurriculum.js
+One-time seed of the Curriculum tab's data (sections + items) for the six
+known courses (Professional Barista, Sensory, Green Coffee, Coffee Roasting,
+Wine, Mixology), transcribed from the client's curriculum documents.
+
+**What it does:**
+1. Fetches every `Course` document and prints its `name`
+2. For each of the six curricula, matches it to a course by name
+   (case-insensitive exact match, falling back to a contains-match)
+3. Creates the `Curriculum` document (with all sections/items, each getting
+   a real Mongo ObjectId) for any match that doesn't already have one
+
+**How to run (from the `4-MULTI-TENANT-NODE-PULLED` folder):**
+```bash
+node arobisca-sms/PROD-UTILS/seedCurriculum.js
+```
+
+**Important notes:**
+- ✅ Safe to run multiple times — a course that already has a curriculum is
+  skipped, never overwritten
+- ⚠️ If a course can't be matched, the script says so and skips it — fix the
+  `courseName` in the script to match your real `Course.name` and re-run
+- ⚠️ One-time use — delete this file once the Curriculum tab shows the
+  correct data for every course
+
 ---
 
 ## Development Notes

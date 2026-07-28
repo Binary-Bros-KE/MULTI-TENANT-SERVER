@@ -20,6 +20,15 @@ const lessonSchema = new mongoose.Schema({
   isMarked: { type: Boolean, default: false },
   attendedStudents: [{ type: mongoose.Schema.Types.ObjectId, ref: "Student" }],
   absentStudents: [{ type: mongoose.Schema.Types.ObjectId, ref: "Student" }],
+  // Optional link back to the curriculum this lesson covers - lets the lesson
+  // form populate `topic` from a pick-list (a section "topic" plus one or
+  // more of its "sub-topic" items) instead of free typing. Left undefined on
+  // older lessons; `topic` remains the plain-text field every UI reads.
+  courseId: { type: mongoose.Schema.Types.ObjectId, ref: "Course", default: null },
+  curriculumSectionId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  curriculumSectionTitle: { type: String, default: null },
+  curriculumItemIds: [{ type: mongoose.Schema.Types.ObjectId }],
+  curriculumSubtopics: [{ type: String }],
 });
 
 const examSchema = new mongoose.Schema({

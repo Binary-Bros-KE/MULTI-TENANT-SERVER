@@ -31,7 +31,7 @@ router.get("/", async (req, res) => {
 /**  📌 CREATE A NEW LESSON (GROUP-BASED) */
 router.post("/create-lesson", async (req, res) => {
     try {
-        const { date, startTime, endTime, venue, topic, groupId, tutorId } = req.body;
+        const { date, startTime, endTime, venue, topic, groupId, tutorId, courseId, curriculumSectionId, curriculumSectionTitle, curriculumItemIds, curriculumSubtopics } = req.body;
 
         // Validate required fields
         if (!date || !startTime || !endTime || !venue || !topic || !tutorId || !groupId) {
@@ -110,7 +110,12 @@ router.post("/create-lesson", async (req, res) => {
             venue,
             topic,
             tutorId,
-            attended: false
+            attended: false,
+            courseId: courseId || null,
+            curriculumSectionId: curriculumSectionId || null,
+            curriculumSectionTitle: curriculumSectionTitle || null,
+            curriculumItemIds: curriculumItemIds || [],
+            curriculumSubtopics: curriculumSubtopics || []
         });
 
         await timetable.save();
@@ -133,7 +138,7 @@ router.post("/create-lesson", async (req, res) => {
 router.put("/update-lesson/:lessonId", async (req, res) => {
     try {
         const { lessonId } = req.params;
-        const { date, startTime, endTime, venue, topic, groupId, tutorId, originalGroupId } = req.body;
+        const { date, startTime, endTime, venue, topic, groupId, tutorId, originalGroupId, courseId, curriculumSectionId, curriculumSectionTitle, curriculumItemIds, curriculumSubtopics } = req.body;
 
         // Validate required fields
         if (!date || !startTime || !endTime || !venue || !topic || !tutorId || !groupId) {
@@ -272,7 +277,12 @@ router.put("/update-lesson/:lessonId", async (req, res) => {
                 attended: lesson.attended,
                 isMarked: lesson.isMarked,
                 attendedStudents: lesson.attendedStudents,
-                absentStudents: lesson.absentStudents
+                absentStudents: lesson.absentStudents,
+                courseId: courseId || null,
+                curriculumSectionId: curriculumSectionId || null,
+                curriculumSectionTitle: curriculumSectionTitle || null,
+                curriculumItemIds: curriculumItemIds || [],
+                curriculumSubtopics: curriculumSubtopics || []
             });
         } else {
             // Regular update - find lesson in target timetable
@@ -309,6 +319,11 @@ router.put("/update-lesson/:lessonId", async (req, res) => {
             lesson.endTime = endTime;
             lesson.venue = venue;
             lesson.topic = topic;
+            lesson.courseId = courseId || null;
+            lesson.curriculumSectionId = curriculumSectionId || null;
+            lesson.curriculumSectionTitle = curriculumSectionTitle || null;
+            lesson.curriculumItemIds = curriculumItemIds || [];
+            lesson.curriculumSubtopics = curriculumSubtopics || [];
         }
 
         await targetTimetable.save();
