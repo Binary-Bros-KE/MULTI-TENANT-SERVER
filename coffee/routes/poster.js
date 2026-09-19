@@ -1,9 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const Poster = require('../model/poster');
-const { uploadPosters } = require('../uploadFile');
 const multer = require('multer');
 const asyncHandler = require('express-async-handler');
+const { uploadBufferToCloudinary } = require('../../utils/cloudinaryTenant');
+
+const uploadPosters = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 }
+});
+
+const uploadPosterImage = async (file) => {
+    const result = await uploadBufferToCloudinary('COFFEE', file.buffer, {
+        folder: 'posters',
+        resource_type: 'image',
+        quality: 'auto:good',
+        fetch_format: 'auto'
+    });
+    return result.secure_url;
+};
 
 // Get all posters
 router.get('/', asyncHandler(async (req, res) => {
@@ -46,7 +61,7 @@ router.post('/', asyncHandler(async (req, res) => {
             const { posterName } = req.body;
             let imageUrl = 'no_url';
             if (req.file) {
-                imageUrl = `${process.env.SERVER_URL}/image/poster/${req.file.filename}`;
+                imageUrl = await uploadPosterImage(req.file);
             }
 
             if (!posterName) {
@@ -95,7 +110,7 @@ router.put('/:id', asyncHandler(async (req, res) => {
 
 
             if (req.file) {
-                image = `${process.env.SERVER_URL}/image/poster/${req.file.filename}`;
+                image = await uploadPosterImage(req.file);
             }
 
             if (!posterName || !image) {

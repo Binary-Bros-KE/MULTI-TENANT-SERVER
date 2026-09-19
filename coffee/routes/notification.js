@@ -7,7 +7,10 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 
-const client = new OneSignal.Client(process.env.ONE_SIGNAL_APP_ID, process.env.ONE_SIGNAL_REST_API_KEY);
+const client = new OneSignal.Client(
+  process.env.COFFEE_ONE_SIGNAL_APP_ID || process.env.ONE_SIGNAL_APP_ID,
+  process.env.COFFEE_ONE_SIGNAL_REST_API_KEY || process.env.ONE_SIGNAL_REST_API_KEY
+);
 
 router.post('/send-notification', asyncHandler(async (req, res) => {
     const { title, description, imageUrl } = req.body;
