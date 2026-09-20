@@ -29,6 +29,16 @@ const lessonSchema = new mongoose.Schema({
   curriculumSectionTitle: { type: String, default: null },
   curriculumItemIds: [{ type: mongoose.Schema.Types.ObjectId }],
   curriculumSubtopics: [{ type: String }],
+  // A lesson can cover several topics. Each entry is one topic (section) with
+  // the sub-topics chosen from it. The four single-topic fields above mirror
+  // the first entry so older clients keep rendering something sensible.
+  curriculumTopics: [{
+    _id: false,
+    sectionId: { type: mongoose.Schema.Types.ObjectId },
+    sectionTitle: { type: String },
+    itemIds: [{ type: mongoose.Schema.Types.ObjectId }],
+    subtopics: [{ type: String }],
+  }],
 });
 
 const examSchema = new mongoose.Schema({

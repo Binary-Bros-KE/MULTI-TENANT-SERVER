@@ -31,7 +31,7 @@ router.get("/", async (req, res) => {
 /**  📌 CREATE A NEW LESSON (GROUP-BASED) */
 router.post("/create-lesson", async (req, res) => {
     try {
-        const { date, startTime, endTime, venue, topic, groupId, tutorId, courseId, curriculumSectionId, curriculumSectionTitle, curriculumItemIds, curriculumSubtopics } = req.body;
+        const { date, startTime, endTime, venue, topic, groupId, tutorId, courseId, curriculumSectionId, curriculumSectionTitle, curriculumItemIds, curriculumSubtopics, curriculumTopics } = req.body;
 
         // Validate required fields
         if (!date || !startTime || !endTime || !venue || !topic || !tutorId || !groupId) {
@@ -115,7 +115,8 @@ router.post("/create-lesson", async (req, res) => {
             curriculumSectionId: curriculumSectionId || null,
             curriculumSectionTitle: curriculumSectionTitle || null,
             curriculumItemIds: curriculumItemIds || [],
-            curriculumSubtopics: curriculumSubtopics || []
+            curriculumSubtopics: curriculumSubtopics || [],
+            curriculumTopics: curriculumTopics || []
         });
 
         await timetable.save();
@@ -138,7 +139,7 @@ router.post("/create-lesson", async (req, res) => {
 router.put("/update-lesson/:lessonId", async (req, res) => {
     try {
         const { lessonId } = req.params;
-        const { date, startTime, endTime, venue, topic, groupId, tutorId, originalGroupId, courseId, curriculumSectionId, curriculumSectionTitle, curriculumItemIds, curriculumSubtopics } = req.body;
+        const { date, startTime, endTime, venue, topic, groupId, tutorId, originalGroupId, courseId, curriculumSectionId, curriculumSectionTitle, curriculumItemIds, curriculumSubtopics, curriculumTopics } = req.body;
 
         // Validate required fields
         if (!date || !startTime || !endTime || !venue || !topic || !tutorId || !groupId) {
@@ -282,7 +283,8 @@ router.put("/update-lesson/:lessonId", async (req, res) => {
                 curriculumSectionId: curriculumSectionId || null,
                 curriculumSectionTitle: curriculumSectionTitle || null,
                 curriculumItemIds: curriculumItemIds || [],
-                curriculumSubtopics: curriculumSubtopics || []
+                curriculumSubtopics: curriculumSubtopics || [],
+                curriculumTopics: curriculumTopics || []
             });
         } else {
             // Regular update - find lesson in target timetable
@@ -324,6 +326,7 @@ router.put("/update-lesson/:lessonId", async (req, res) => {
             lesson.curriculumSectionTitle = curriculumSectionTitle || null;
             lesson.curriculumItemIds = curriculumItemIds || [];
             lesson.curriculumSubtopics = curriculumSubtopics || [];
+            lesson.curriculumTopics = curriculumTopics || [];
         }
 
         await targetTimetable.save();
