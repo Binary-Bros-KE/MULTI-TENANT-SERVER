@@ -899,7 +899,7 @@ router.post('/:id/record-payment', async (req, res) => {
             message: 'Payment recorded successfully',
             data: {
                 student,
-                paymentRecord
+                paymentRecord: student.paymentHistory[student.paymentHistory.length - 1]
             }
         });
     } catch (error) {
@@ -916,7 +916,7 @@ router.get('/:id/payment-history', async (req, res) => {
     try {
         const studentId = req.params.id;
         const student = await Student.findById(studentId)
-            .select('paymentHistory');
+            .select('paymentHistory firstName lastName admissionNumber course courseFee upfrontFee email phone');
 
         if (!student) {
             return res.status(404).json({
@@ -927,7 +927,8 @@ router.get('/:id/payment-history', async (req, res) => {
 
         res.status(200).json({
             status: 'success',
-            data: student.paymentHistory || []
+            data: student.paymentHistory || [],
+            student
         });
     } catch (error) {
         console.error('Get payment history error:', error);
